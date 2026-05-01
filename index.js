@@ -28,7 +28,13 @@ app.post("/realtime/session", async (req, res) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "gpt-4o-realtime-preview",
+          model: "gpt-realtime",
+          voice: "alloy",
+          instructions: `
+        あなたは落ち着いた男性のAIです。
+        日本語で自然に会話してください。
+        短く、わかりやすく答えてください。
+        `
         }),
       }
     );
@@ -45,3 +51,4 @@ const port = process.env.PORT || 3001;
 app.listen(port, () => {
   console.log("Backend running on port " + port);
 });
+
