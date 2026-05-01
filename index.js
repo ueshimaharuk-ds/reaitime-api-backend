@@ -5,7 +5,7 @@ const cors = require("cors");
 const app = express(); // ← これが最重要
 
 app.use(cors({
-  origin: "realtime-api-backend-g6f4ddfzh3dsc9fa.japanwest-01.azurewebsites.net"
+  origin: "https://icy-forest-0f8312e00.7.azurestaticapps.net"
 }));
 app.use(express.json());
 
