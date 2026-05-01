@@ -40,7 +40,7 @@ app.post("/realtime/session", async (req, res) => {
 });
 
 // 起動
-const port = 3001;
+const port = process.env.PORT || 3001;
 app.listen(port, () => {
   console.log("Backend running on port " + port);
 });
