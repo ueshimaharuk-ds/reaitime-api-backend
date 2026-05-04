@@ -2,8 +2,12 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const { GoogleAuth } = require("google-auth-library");
+const { WebSocketServer, WebSocket } = require("ws");
+const http = require("http");
 
 const app = express();
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
 
 const corsOptions = {
   origin: [
@@ -18,53 +22,95 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
+async function getGcpToken() {
+  const credentials = JSON.parse(
+    process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON,
+  );
+  const identityEndpoint = process.env.IDENTITY_ENDPOINT;
+  const identityHeader = process.env.IDENTITY_HEADER;
+
+  if (identityEndpoint && identityHeader) {
+    credentials.credential_source.url = `${identityEndpoint}?api-version=2019-08-01&resource=api://AzureADTokenExchange`;
+    credentials.credential_source.headers = {
+      "X-IDENTITY-HEADER": identityHeader,
+    };
+  }
+
+  const auth = new GoogleAuth({
+    credentials,
+    scopes: "https://www.googleapis.com/auth/cloud-platform",
+  });
+
+  const client = await auth.getClient();
+  const tokenResponse = await client.getAccessToken();
+  const projectId = await auth.getProjectId();
+  return { token: tokenResponse.token, projectId };
+}
+
+// REST: トークン取得エンドポイント（既存）
 app.post("/realtime/session", async (req, res) => {
   try {
-    const rawJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-    if (!rawJson) {
-      return res
-        .status(500)
-        .json({ error: "GOOGLE_APPLICATION_CREDENTIALS_JSON が未設定" });
-    }
-
-    const credentials = JSON.parse(rawJson);
-
-    // Azure App Service Linux 用エンドポイントに動的差し替え
-    const identityEndpoint = process.env.IDENTITY_ENDPOINT; // http://169.254.131.2:8081/msi/token
-    const identityHeader = process.env.IDENTITY_HEADER; // 再起動ごとに変わる値
-
-    if (identityEndpoint && identityHeader) {
-      credentials.credential_source.url = `${identityEndpoint}?api-version=2019-08-01&resource=api://AzureADTokenExchange`;
-      credentials.credential_source.headers = {
-        "X-IDENTITY-HEADER": identityHeader,
-      };
-    }
-
-    const auth = new GoogleAuth({
-      credentials,
-      scopes: "https://www.googleapis.com/auth/cloud-platform",
-    });
-
-    const client = await auth.getClient();
-    const tokenResponse = await client.getAccessToken();
-    const projectId = await auth.getProjectId();
-
+    const { token, projectId } = await getGcpToken();
     res.json({
-      access_token: tokenResponse.token,
+      access_token: token,
       project_id: projectId,
       location: "us-west1",
       model_id: "gemini-live-2.5-flash-native-audio",
     });
   } catch (err) {
     console.error("Auth Error:", err);
-    res.status(500).json({
-      error: "Vertex AI セッション作成失敗",
-      details: err.message,
+    res
+      .status(500)
+      .json({ error: "Vertex AI セッション作成失敗", details: err.message });
+  }
+});
+
+// WebSocketプロキシ
+wss.on("connection", async (clientWs) => {
+  console.log("クライアントWS接続");
+  try {
+    const { token, projectId } = await getGcpToken();
+    const location = "us-west1";
+    const modelId = "gemini-live-2.5-flash-native-audio";
+    const vertexUrl = `wss://${location}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1beta1.LlmStreamService/StreamRawPredict?access_token=${token}`;
+
+    const vertexWs = new WebSocket(vertexUrl);
+
+    vertexWs.on("open", () => {
+      console.log("Vertex AI WS接続成功");
+      // 初期設定送信
+      const setup = {
+        setup: {
+          model: `projects/${projectId}/locations/${location}/publishers/google/models/${modelId}`,
+        },
+      };
+      vertexWs.send(JSON.stringify(setup));
     });
+
+    // Vertex AI → クライアント
+    vertexWs.on("message", (data) => {
+      if (clientWs.readyState === WebSocket.OPEN) {
+        clientWs.send(data);
+      }
+    });
+
+    // クライアント → Vertex AI
+    clientWs.on("message", (data) => {
+      if (vertexWs.readyState === WebSocket.OPEN) {
+        vertexWs.send(data);
+      }
+    });
+
+    vertexWs.on("error", (err) => console.error("Vertex WS Error:", err));
+    vertexWs.on("close", () => clientWs.close());
+    clientWs.on("close", () => vertexWs.close());
+  } catch (err) {
+    console.error("WS Auth Error:", err);
+    clientWs.close();
   }
 });
 
 const port = process.env.PORT || 3001;
-app.listen(port, () => {
+server.listen(port, () => {
   console.log(`Backend running on port ${port}`);
 });
