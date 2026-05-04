@@ -17,8 +17,6 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions)); // プリフライト（OPTIONS）リクエストを確実に処理
-
 app.use(express.json());
 
 // --- 認証設定の初期化 ---
