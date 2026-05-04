@@ -47,7 +47,7 @@ async function getGcpToken() {
   return { token: tokenResponse.token, projectId };
 }
 
-// REST: トークン取得エンドポイント（既存）
+// REST: トークン取得エンドポイント
 app.post("/realtime/session", async (req, res) => {
   try {
     const { token, projectId } = await getGcpToken();
@@ -72,13 +72,16 @@ wss.on("connection", async (clientWs) => {
     const { token, projectId } = await getGcpToken();
     const location = "us-west1";
     const modelId = "gemini-live-2.5-flash-native-audio";
-    const vertexUrl = `wss://${location}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1beta1.LlmStreamService/StreamRawPredict?access_token=${token}`;
+    const vertexUrl = `wss://${location}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1beta1.LlmStreamService/StreamRawPredict`;
 
-    const vertexWs = new WebSocket(vertexUrl);
+    const vertexWs = new WebSocket(vertexUrl, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
 
     vertexWs.on("open", () => {
       console.log("Vertex AI WS接続成功");
-      // 初期設定送信
       const setup = {
         setup: {
           model: `projects/${projectId}/locations/${location}/publishers/google/models/${modelId}`,
@@ -101,11 +104,27 @@ wss.on("connection", async (clientWs) => {
       }
     });
 
-    vertexWs.on("error", (err) => console.error("Vertex WS Error:", err));
-    vertexWs.on("close", () => clientWs.close());
-    clientWs.on("close", () => vertexWs.close());
+    vertexWs.on("error", (err) => {
+      console.error("Vertex WS Error:", err.message);
+      clientWs.close();
+    });
+
+    vertexWs.on("close", (code, reason) => {
+      console.log(`Vertex WS切断: ${code} ${reason}`);
+      clientWs.close();
+    });
+
+    clientWs.on("close", () => {
+      console.log("クライアントWS切断");
+      vertexWs.close();
+    });
+
+    clientWs.on("error", (err) => {
+      console.error("Client WS Error:", err.message);
+      vertexWs.close();
+    });
   } catch (err) {
-    console.error("WS Auth Error:", err);
+    console.error("WS Auth Error:", err.message);
     clientWs.close();
   }
 });
