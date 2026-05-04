@@ -93,6 +93,7 @@ wss.on("connection", async (clientWs) => {
 
     // Vertex AI → クライアント
     vertexWs.on("message", (data) => {
+      console.log("Vertex→Client:", data.toString().substring(0, 200)); // ★追加
       if (clientWs.readyState === WebSocket.OPEN) {
         clientWs.send(data);
       }
@@ -100,6 +101,7 @@ wss.on("connection", async (clientWs) => {
 
     // クライアント → Vertex AI
     clientWs.on("message", (data) => {
+      console.log("Client→Vertex:", data.toString().substring(0, 200)); // ★追加
       if (vertexWs.readyState === WebSocket.OPEN) {
         vertexWs.send(data);
       }
