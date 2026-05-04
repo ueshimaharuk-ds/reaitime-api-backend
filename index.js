@@ -18,34 +18,26 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// ★ デバッグログ（問題解決後に削除可）
-console.log(
-  "ENV TYPE:",
-  typeof process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON,
-);
-console.log(
-  "ENV PREVIEW:",
-  process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON?.substring(0, 80),
-);
-
-// ★ 起動時クラッシュを防ぐため、リクエスト時に認証を初期化
 app.post("/realtime/session", async (req, res) => {
   try {
     const rawJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-
     if (!rawJson) {
       return res
         .status(500)
         .json({ error: "GOOGLE_APPLICATION_CREDENTIALS_JSON が未設定" });
     }
 
-    let credentials;
-    try {
-      credentials = JSON.parse(rawJson);
-    } catch (e) {
-      return res
-        .status(500)
-        .json({ error: "JSON parse失敗", preview: rawJson.substring(0, 100) });
+    const credentials = JSON.parse(rawJson);
+
+    // Azure App Service Linux 用エンドポイントに動的差し替え
+    const identityEndpoint = process.env.IDENTITY_ENDPOINT; // http://169.254.131.2:8081/msi/token
+    const identityHeader = process.env.IDENTITY_HEADER; // 再起動ごとに変わる値
+
+    if (identityEndpoint && identityHeader) {
+      credentials.credential_source.url = `${identityEndpoint}?api-version=2019-08-01&resource=api://AzureADTokenExchange`;
+      credentials.credential_source.headers = {
+        "X-IDENTITY-HEADER": identityHeader,
+      };
     }
 
     const auth = new GoogleAuth({
