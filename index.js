@@ -21,7 +21,10 @@ app.options("*", cors(corsOptions)); // プリフライト（OPTIONS）リクエ
 
 app.use(express.json());
 
+// server.js
 const auth = new GoogleAuth({
+  // JSON キーの代わりに、WIF の構成（指示書）を環境変数から読み込む
+  credentials: JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON),
   scopes: "https://www.googleapis.com/auth/cloud-platform",
 });
 
