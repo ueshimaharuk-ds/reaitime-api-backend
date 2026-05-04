@@ -1,15 +1,14 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const { GoogleAuth } = require("google-auth-library"); // 1度目の宣言（ここでOK）
+const { GoogleAuth } = require("google-auth-library");
 
 const app = express();
 
-// CORS設定の強化
 const corsOptions = {
   origin: [
     "https://icy-forest-0f8312e00.7.azurestaticapps.net",
-    "http://localhost:3000", // ローカルテスト用
+    "http://localhost:3000",
   ],
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
@@ -19,21 +18,45 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// --- 認証設定の初期化 ---
-// 重複していた require と宣言を削除し、既存の GoogleAuth を使用
-const auth = new GoogleAuth({
-  // 環境変数からJSON文字列を取得し、オブジェクトに変換して渡す
-  credentials: JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON),
-  scopes: "https://www.googleapis.com/auth/cloud-platform",
-});
+// ★ デバッグログ（問題解決後に削除可）
+console.log(
+  "ENV TYPE:",
+  typeof process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON,
+);
+console.log(
+  "ENV PREVIEW:",
+  process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON?.substring(0, 80),
+);
 
+// ★ 起動時クラッシュを防ぐため、リクエスト時に認証を初期化
 app.post("/realtime/session", async (req, res) => {
   try {
+    const rawJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+
+    if (!rawJson) {
+      return res
+        .status(500)
+        .json({ error: "GOOGLE_APPLICATION_CREDENTIALS_JSON が未設定" });
+    }
+
+    let credentials;
+    try {
+      credentials = JSON.parse(rawJson);
+    } catch (e) {
+      return res
+        .status(500)
+        .json({ error: "JSON parse失敗", preview: rawJson.substring(0, 100) });
+    }
+
+    const auth = new GoogleAuth({
+      credentials,
+      scopes: "https://www.googleapis.com/auth/cloud-platform",
+    });
+
     const client = await auth.getClient();
     const tokenResponse = await client.getAccessToken();
     const projectId = await auth.getProjectId();
 
-    // 正常なレスポンス
     res.json({
       access_token: tokenResponse.token,
       project_id: projectId,
@@ -42,7 +65,6 @@ app.post("/realtime/session", async (req, res) => {
     });
   } catch (err) {
     console.error("Auth Error:", err);
-    // エラー時もJSONで詳細を返す（503を避けるため）
     res.status(500).json({
       error: "Vertex AI セッション作成失敗",
       details: err.message,
