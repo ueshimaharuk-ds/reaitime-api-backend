@@ -54,32 +54,15 @@ app.post("/realtime/session", async (req, res) => {
     res.json({
       access_token: token,
       project_id: projectId,
-      location: "us-west1",
+      location: "us-central1",
       model_id: "gemini-live-2.5-flash-native-audio",
     });
   } catch (err) {
     console.error("Auth Error:", err);
-    res
-      .status(500)
-      .json({ error: "Vertex AI セッション作成失敗", details: err.message });
-  }
-});
-
-//debug用エンドポイント
-app.get("/debug/models", async (req, res) => {
-  try {
-    const { token, projectId } = await getGcpToken();
-    const location = "us-central1"; // us-west1から変更して試す
-
-    const response = await fetch(
-      `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    );
-
-    const text = await response.text();
-    res.json({ status: response.status, body: text.substring(0, 2000) });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({
+      error: "Vertex AI セッション作成失敗",
+      details: err.message,
+    });
   }
 });
 
@@ -88,9 +71,9 @@ wss.on("connection", async (clientWs) => {
   console.log("クライアントWS接続");
   try {
     const { token, projectId } = await getGcpToken();
-    const location = "us-west1";
+    const location = "us-central1";
     const modelId = "gemini-live-2.5-flash-native-audio";
-    const vertexUrl = `wss://${location}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1beta1.LlmStreamService/StreamRawPredict`;
+    const vertexUrl = `wss://${location}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1beta1.LlmBidiService/BidiGenerateContent`;
 
     const vertexWs = new WebSocket(vertexUrl, {
       headers: {
