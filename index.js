@@ -5,12 +5,19 @@ const { GoogleAuth } = require("google-auth-library");
 
 const app = express();
 
-// フロントエンドのURLを許可
-app.use(
-  cors({
-    origin: "https://icy-forest-0f8312e00.7.azurestaticapps.net",
-  }),
-);
+// CORS設定の強化
+const corsOptions = {
+  origin: [
+    "https://icy-forest-0f8312e00.7.azurestaticapps.net",
+    "http://localhost:3000", // ローカルテスト用
+  ],
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions)); // プリフライト（OPTIONS）リクエストを確実に処理
 
 app.use(express.json());
 
@@ -20,12 +27,10 @@ const auth = new GoogleAuth({
 
 app.post("/realtime/session", async (req, res) => {
   try {
-    // Google Cloud の認証情報を取得
     const client = await auth.getClient();
     const tokenResponse = await client.getAccessToken();
     const projectId = await auth.getProjectId();
 
-    // フロントエンドに接続情報を返す
     res.json({
       access_token: tokenResponse.token,
       project_id: projectId,
@@ -33,8 +38,13 @@ app.post("/realtime/session", async (req, res) => {
       model_id: "gemini-live-2.5-flash-native-audio",
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Vertex AI セッション作成失敗" });
+    console.error("Auth Error:", err);
+    // エラー時もCORSヘッダーが消えないようExpressが処理しますが、
+    // 明示的にJSONでエラーを返します
+    res.status(500).json({
+      error: "Vertex AI セッション作成失敗",
+      details: err.message,
+    });
   }
 });
 
