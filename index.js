@@ -65,6 +65,32 @@ app.post("/realtime/session", async (req, res) => {
   }
 });
 
+// デバッグ用：Vertex AI WSエンドポイント確認
+app.get("/debug/vertex", async (req, res) => {
+  try {
+    const { token, projectId } = await getGcpToken();
+    const location = "us-west1";
+    const modelId = "gemini-live-2.5-flash-native-audio";
+
+    // まずHTTPSでアクセスして何が返るか確認
+    const testUrl = `https://${location}-aiplatform.googleapis.com/v1beta1/projects/${projectId}/locations/${location}/publishers/google/models/${modelId}`;
+
+    const response = await fetch(testUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const text = await response.text();
+    res.json({
+      status: response.status,
+      projectId,
+      token_preview: token?.substring(0, 20),
+      response: text.substring(0, 500),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // WebSocketプロキシ
 wss.on("connection", async (clientWs) => {
   console.log("クライアントWS接続");
